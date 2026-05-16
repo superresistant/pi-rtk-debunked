@@ -47,21 +47,16 @@ interface CurrentTextState {
 }
 
 export const readToolSchema = Type.Object({
-	path: Type.String({ description: "Path to the file to read (relative or absolute)" }),
-	offset: Type.Optional(Type.Number({ description: "Line number to start reading from (1-indexed)" })),
-	limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read" })),
-	bypass_cache: Type.Optional(
-		Type.Boolean({
-			description:
-				"If true, bypass readcache optimization for this call and return baseline read output for the requested scope",
-		}),
-	),
+	path: Type.String(),
+	offset: Type.Optional(Type.Number()),
+	limit: Type.Optional(Type.Number()),
+	bypass_cache: Type.Optional(Type.Boolean()),
 });
 
 export type ReadToolParams = Static<typeof readToolSchema>;
 
 function buildReadDescription(): string {
-	return `Read the contents of a file. Supports text files and images (jpg, png, gif, webp). Images are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. Returns full text, unchanged marker, or unified diff. Treat output as authoritative for requested scope. Set bypass_cache=true to force baseline output for this call only. If an edit fails because exact old text was not found, re-read the same path and scope with bypass_cache=true before retrying edit. Use readcache_refresh only when output is insufficient for correctness across calls; it invalidates trust for the selected scope until that scope is re-anchored by a baseline read, and increases repeated-read context usage.`;
+	return `Read file. Text + images (jpg/png/gif/webp). Text truncated to ${DEFAULT_MAX_LINES} lines / ${DEFAULT_MAX_BYTES / 1024}KB; use offset/limit for large files. Set bypass_cache=true if previous read returned stale content (e.g. after edit failed because matched text not found).`;
 }
 
 function hasImageContent(result: AgentToolResult<ReadToolDetails | undefined>): boolean {
