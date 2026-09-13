@@ -1,4 +1,4 @@
-import type { ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
+import { buildContextEntries, type ExtensionContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { SCOPE_FULL } from "../../src/constants.js";
 import { buildInvalidationV1, buildReadCacheMetaV1 } from "../../src/meta.js";
@@ -91,6 +91,7 @@ function createSessionManagerStub(state: {
 		getEntry: (id: string) => state.branch.find((entry) => entry.id === id),
 		getLabel: () => undefined,
 		getBranch: () => state.branch,
+		buildContextEntries: () => buildContextEntries(state.branch, state.leafId),
 		getHeader: () => null,
 		getEntries: () => state.branch,
 		getTree: () => [],

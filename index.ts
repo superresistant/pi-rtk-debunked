@@ -1,13 +1,3 @@
-/**
- * pi-rtk-debunked — the one token-reduction technique that survived
- * measurement: ANSI stripping on bash tool output.
- *
- * Every other technique (test/build/linter/git compaction, source filtering,
- * truncation, search grouping — and, in bench/, pre-execution rewriting and
- * TOON re-encoding) was measured against real session history and removed
- * or rejected. Claims vs proofs: README.md and bench/.
- */
-
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isBashToolResult } from "@earendil-works/pi-coding-agent";
 
@@ -45,20 +35,21 @@ export default function (pi: ExtensionAPI) {
 		if (!isBashToolResult(event)) return;
 		if (!config.techniques.ansiStripping) return;
 
-		const content = event.content;
-		const textItem = content?.find((c) => c.type === "text");
-		if (!textItem || !("text" in textItem)) return;
-
-		const originalText = textItem.text;
-		const filteredText = stripAnsiFast(originalText);
+		let originalText = "";
+		let filteredText = "";
+		const content = event.content.map((item) => {
+			if (item.type !== "text") return item;
+			const text = stripAnsiFast(item.text);
+			originalText += item.text;
+			filteredText += text;
+			return text === item.text ? item : { ...item, text };
+		});
 		if (filteredText === originalText) return;
 
 		trackSavings(originalText, filteredText, "bash", "ansi");
 		processedCount++;
 
-		return {
-			content: content.map((c) => (c.type === "text" ? { ...c, text: filteredText } : c)),
-		};
+		return { content };
 	});
 
 	pi.registerCommand("rtk-stats", {

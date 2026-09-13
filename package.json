@@ -1,20 +1,32 @@
 {
   "name": "pi-rtk-debunked",
   "version": "0.2.0",
-  "description": "We measured every token-reduction claim against real usage. One technique survived: ANSI stripping. The proofs are in bench/.",
+  "description": "Pi extensions for ANSI stripping on bash output and replay-aware read caching, with historical token-reduction evaluations.",
   "type": "module",
   "main": "index.ts",
   "pi": {
     "extensions": [
-      "./index.ts"
+      "./index.ts",
+      "./readcache/index.ts"
     ]
   },
   "scripts": {
-    "check": "npx tsc --noEmit"
+    "check": "tsc --noEmit && tsc --noEmit -p readcache/tsconfig.json",
+    "typecheck": "npm run check",
+    "test": "vitest run --root readcache test && vitest run --root test ansi.test.ts"
   },
   "author": "Matt Cowger",
   "license": "MIT",
   "repository": "github:superresistant/pi-rtk-debunked",
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.40",
+    "diff": "^8.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
   }

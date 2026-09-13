@@ -10,5 +10,5 @@
     "noEmit": true,
     "lib": ["ES2022"]
   },
-  "include": ["*.ts", "techniques/*.ts"]
+  "include": ["*.ts", "techniques/*.ts", "test/*.ts"]
 }
