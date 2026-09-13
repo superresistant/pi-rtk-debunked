@@ -1,4 +1,4 @@
-import type { ExtensionContext, SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { SCOPE_FULL } from "../../src/constants.js";
 import { buildInvalidationV1, buildReadCacheMetaV1 } from "../../src/meta.js";

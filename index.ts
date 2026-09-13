@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { registerReadcacheCommands } from "./src/commands.js";
 import { clearReplayRuntimeState, createReplayRuntimeState } from "./src/replay.js";
 import { pruneObjectsOlderThan } from "./src/object-store.js";
@@ -21,7 +21,7 @@ export default function (pi: ExtensionAPI): void {
 
 	pi.on("session_compact", clearCaches);
 	pi.on("session_tree", clearCaches);
-	pi.on("session_fork", clearCaches);
-	pi.on("session_switch", clearCaches);
+	pi.on("session_before_fork", clearCaches);
+	pi.on("session_before_switch", clearCaches);
 	pi.on("session_shutdown", clearCaches);
 }

@@ -1,4 +1,4 @@
-import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { READCACHE_CUSTOM_TYPE, READCACHE_META_VERSION, SCOPE_FULL } from "./constants.js";
 import type {
 	ReadCacheDebugV1,

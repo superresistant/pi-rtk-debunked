@@ -1,5 +1,5 @@
-import type { SessionEntry } from "@mariozechner/pi-coding-agent";
-import type { ReadToolDetails } from "@mariozechner/pi-coding-agent";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { ReadToolDetails } from "@earendil-works/pi-coding-agent";
 import type { SCOPE_FULL } from "./constants.js";
 
 export type ScopeRangeKey = `r:${number}:${number}`;

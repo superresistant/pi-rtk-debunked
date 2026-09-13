@@ -1,4 +1,4 @@
-import { truncateHead, type TruncationOptions, type TruncationResult } from "@mariozechner/pi-coding-agent";
+import { truncateHead, type TruncationOptions, type TruncationResult } from "@earendil-works/pi-coding-agent";
 
 function validateRange(start: number, end: number): void {
 	if (!Number.isInteger(start) || start <= 0) {

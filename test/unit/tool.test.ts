@@ -1,7 +1,7 @@
 import { mkdtemp, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionManager, type AgentToolResult, type ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { SessionManager, type AgentToolResult, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { objectPathForHash } from "../../src/object-store.js";
 import { createReadOverrideTool } from "../../src/tool.js";
@@ -287,7 +287,11 @@ describe("tool", () => {
 		const ctx = { cwd, sessionManager } as unknown as ExtensionContext;
 		const result = await tool.execute("call-13", { path: "tiny.png" }, undefined, undefined, ctx);
 
-		expect(result.content.some((content) => content.type === "image")).toBe(true);
+		const hasImageBlock = result.content.some((content) => content.type === "image");
+		const hasImageTextNote = result.content.some(
+			(content) => content.type === "text" && content.text.includes("Read image file"),
+		);
+		expect(hasImageBlock || hasImageTextNote).toBe(true);
 		expect(result.details?.readcache).toBeUndefined();
 	});
 

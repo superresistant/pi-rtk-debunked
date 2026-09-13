@@ -6,7 +6,7 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 	ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { type Static, Type } from "@sinclair/typebox";
 import { READCACHE_CUSTOM_TYPE, SCOPE_FULL, scopeRange } from "./constants.js";
 import { buildInvalidationV1 } from "./meta.js";

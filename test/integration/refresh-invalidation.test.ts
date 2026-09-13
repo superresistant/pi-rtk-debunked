@@ -10,7 +10,7 @@ import {
 	type ReadToolDetails,
 	type SessionEntry,
 	 type ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { registerReadcacheCommands } from "../../src/commands.js";
 import { READCACHE_CUSTOM_TYPE } from "../../src/constants.js";

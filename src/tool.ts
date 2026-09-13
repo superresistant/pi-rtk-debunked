@@ -8,7 +8,7 @@ import {
 	type ExtensionContext,
 	type ReadToolDetails,
 	type TruncationResult,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { type Static, Type } from "@sinclair/typebox";
 import {
 	DEFAULT_EXCLUDED_PATH_PATTERNS,

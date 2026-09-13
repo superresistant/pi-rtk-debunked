@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import registerExtension from "../../index.js";
 
@@ -30,8 +30,8 @@ describe("index extension wiring", () => {
 		expect(eventHandlers.has("session_start")).toBe(true);
 		expect(eventHandlers.has("session_compact")).toBe(true);
 		expect(eventHandlers.has("session_tree")).toBe(true);
-		expect(eventHandlers.has("session_fork")).toBe(true);
-		expect(eventHandlers.has("session_switch")).toBe(true);
+		expect(eventHandlers.has("session_before_fork")).toBe(true);
+		expect(eventHandlers.has("session_before_switch")).toBe(true);
 		expect(eventHandlers.has("session_shutdown")).toBe(true);
 	});
 });

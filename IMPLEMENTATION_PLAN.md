@@ -76,7 +76,7 @@ pi-readcache/
 ## 3.1 package.json (repo root)
 
 Dependencies:
-- `@mariozechner/pi-coding-agent`
+- `@earendil-works/pi-coding-agent`
 - `@sinclair/typebox`
 
 Optional (only if needed):
