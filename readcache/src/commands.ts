@@ -22,9 +22,9 @@ const REFRESH_MESSAGE_TYPE = "pi-readcache-refresh";
 const UTF8_STRICT_DECODER = new TextDecoder("utf-8", { fatal: true });
 
 const readcacheRefreshSchema = Type.Object({
-	path: Type.String({ description: "Path to refresh (same input semantics as read)" }),
-	offset: Type.Optional(Type.Number({ description: "Line number to start from (1-indexed)" })),
-	limit: Type.Optional(Type.Number({ description: "Maximum number of lines" })),
+	path: Type.String({ description: "File path; same semantics as read" }),
+	offset: Type.Optional(Type.Number({ description: "Start line; 1-indexed" })),
+	limit: Type.Optional(Type.Number({ description: "Maximum lines" })),
 });
 
 export type ReadcacheRefreshParams = Static<typeof readcacheRefreshSchema>;
@@ -257,7 +257,7 @@ export function createReadcacheRefreshTool(
 	return {
 		name: "readcache_refresh",
 		label: "readcache_refresh",
-		description: "Invalidate readcache state for a path or range so the next read returns baseline output",
+		description: "Invalidate cached file/range; next read→baseline output",
 		parameters: readcacheRefreshSchema,
 		execute: async (
 			_toolCallId: string,

@@ -47,16 +47,16 @@ interface CurrentTextState {
 }
 
 export const readToolSchema = Type.Object({
-	path: Type.String(),
-	offset: Type.Optional(Type.Number()),
-	limit: Type.Optional(Type.Number()),
+	path: Type.String({ description: "Relative/absolute file path" }),
+	offset: Type.Optional(Type.Number({ description: "Start line; 1-indexed" })),
+	limit: Type.Optional(Type.Number({ description: "Maximum lines" })),
 	bypass_cache: Type.Optional(Type.Boolean()),
 });
 
 export type ReadToolParams = Static<typeof readToolSchema>;
 
 function buildReadDescription(): string {
-	return `Read file. Text + images (jpg/png/gif/webp). Text truncated to ${DEFAULT_MAX_LINES} lines / ${DEFAULT_MAX_BYTES / 1024}KB; use offset/limit for large files. Set bypass_cache=true if previous read returned stale content (e.g. after edit failed because matched text not found).`;
+	return `Read text/images(jpg/png/gif/webp); text ≤${DEFAULT_MAX_LINES} lines/${DEFAULT_MAX_BYTES / 1024}KB; offset/limit for large files. Stale read (e.g. edit match missing)→bypass_cache=true`;
 }
 
 function hasImageContent(result: AgentToolResult<ReadToolDetails | undefined>): boolean {
