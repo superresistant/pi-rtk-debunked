@@ -8,6 +8,7 @@ import {
 	extractReadMetaFromSessionEntry,
 	isReadCacheInvalidationV1,
 	isReadCacheMetaV1,
+	limitReadMetaToOutput,
 } from "../../src/meta.js";
 
 describe("meta", () => {
@@ -92,6 +93,24 @@ describe("meta", () => {
 			}),
 		).toBe(true);
 
+	});
+
+	it("limits coverage to complete emitted lines and remains stable on replay", () => {
+		const meta = buildReadCacheMetaV1({
+			pathKey: "/tmp/file.txt", scopeKey: "r:10:30", servedHash: "abc", mode: "full",
+			totalLines: 50, rangeStart: 10, rangeEnd: 30, bytes: 80000,
+		});
+		const truncation = { truncated: true, outputLines: 4, lastLinePartial: true };
+		const limited = limitReadMetaToOutput(meta, truncation);
+		expect(limited).toMatchObject({ scopeKey: "r:10:12", rangeStart: 10, rangeEnd: 12 });
+		expect(limitReadMetaToOutput(limited!, truncation)).toEqual(limited);
+		expect(limitReadMetaToOutput(meta, { truncated: false })).toEqual(meta);
+		expect(limitReadMetaToOutput(meta, undefined)).toEqual(meta);
+		for (const outputLines of [0, -1, 1.5, undefined]) {
+			expect(limitReadMetaToOutput(meta, { truncated: true, outputLines })).toBeUndefined();
+		}
+		expect(limitReadMetaToOutput(meta, { truncated: true, outputLines: 1, lastLinePartial: true })).toBeUndefined();
+		expect(limitReadMetaToOutput({ ...meta, mode: "diff" }, truncation)).toBeUndefined();
 	});
 
 	it("validates invalidation payloads", () => {

@@ -169,8 +169,8 @@ describe("tool", () => {
 	it("falls back to baseline diff mode for oversized full-file changes", async () => {
 		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-tool-"));
 		const filePath = join(cwd, "sample.txt");
-		const large = `${"a".repeat(2 * 1024 * 1024 + 64)}\n`;
-		await writeFile(filePath, large, "utf-8");
+		const large = Array.from({ length: 2200 }, (_, index) => `line ${index + 1}: ${"a".repeat(1024)}`).join("\n");
+		await writeFile(filePath, "one\ntwo\nthree", "utf-8");
 
 		const tool = createReadOverrideTool();
 		const sessionManager = SessionManager.inMemory(cwd);
@@ -179,12 +179,12 @@ describe("tool", () => {
 		const firstRead = await tool.execute("call-5", { path: "sample.txt" }, undefined, undefined, ctx);
 		appendReadResult(sessionManager, "call-5", firstRead);
 
-		await writeFile(filePath, `b${large.slice(1)}`, "utf-8");
+		await writeFile(filePath, large, "utf-8");
 		const secondRead = await tool.execute("call-6", { path: "sample.txt" }, undefined, undefined, ctx);
 		expect(secondRead.details?.readcache?.mode).toBe("baseline_fallback");
 		expect(secondRead.details?.readcache?.debug).toMatchObject({
 			reason: "diff_file_too_large_bytes",
-			scope: "full",
+			scope: "range",
 			baseHashFound: true,
 			diffAttempted: true,
 		});

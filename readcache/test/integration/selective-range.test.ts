@@ -44,6 +44,117 @@ function getText(result: AgentToolResult<ReadToolDetails | undefined>): string {
 }
 
 describe("integration: selective range behavior", () => {
+	it.each([
+		{ name: "byte limit", total: 320, width: 220, offset: 1, limit: 320, bypass_cache: false },
+		{ name: "line limit", total: 2200, width: 1, offset: 1, limit: 2200, bypass_cache: false },
+		{ name: "offset range", total: 320, width: 220, offset: 31, limit: 220, bypass_cache: false },
+		{ name: "bypassed byte limit", total: 320, width: 220, offset: 1, limit: 320, bypass_cache: true },
+	])("trusts only emitted lines after $name truncation, live and on replay", async (fixture) => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-truncated-"));
+		const lines = Array.from({ length: fixture.total }, (_, index) => `line ${index + 1}: ${"é".repeat(fixture.width)}`);
+		await writeFile(join(cwd, "sample.txt"), lines.join("\n"), "utf-8");
+		const sessionManager = SessionManager.inMemory(cwd);
+		const ctx = asContext(cwd, sessionManager);
+		const tool = createReadOverrideTool();
+		const params = { path: "sample.txt", offset: fixture.offset, limit: fixture.limit, bypass_cache: fixture.bypass_cache };
+		const first = await tool.execute("truncated", params, undefined, undefined, ctx);
+		expect(first.details?.truncation?.truncated).toBe(true);
+		const shown = first.details!.truncation!.outputLines;
+		const nextLine = fixture.offset + shown;
+		expect(getText(first)).not.toContain(lines[nextLine - 1]);
+
+		const tailParams = { path: "sample.txt", offset: nextLine, limit: 1 };
+		const liveTail = await tool.execute("live-tail", tailParams, undefined, undefined, ctx);
+		expect(getText(liveTail)).toContain(lines[nextLine - 1]);
+		expect(liveTail.details?.readcache?.mode).toBe("full");
+		expect(first.details?.readcache).toMatchObject({
+			scopeKey: `r:${fixture.offset}:${nextLine - 1}`,
+			rangeStart: fixture.offset,
+			rangeEnd: nextLine - 1,
+		});
+
+		appendReadResult(sessionManager, "truncated", first);
+		const resumedTool = createReadOverrideTool();
+		const replayTail = await resumedTool.execute("replay-tail", tailParams, undefined, undefined, ctx);
+		expect(getText(replayTail)).toContain(lines[nextLine - 1]);
+		expect(replayTail.details?.readcache?.mode).toBe("full");
+		const covered = await resumedTool.execute("covered", {
+			path: "sample.txt", offset: fixture.offset, limit: shown,
+		}, undefined, undefined, ctx);
+		expect(covered.details?.readcache?.mode).toBe("unchanged_range");
+		const repeated = await resumedTool.execute("repeat", { ...params, bypass_cache: false }, undefined, undefined, ctx);
+		expect(getText(repeated)).toContain(lines[fixture.offset - 1]);
+		expect(repeated.details?.truncation?.truncated).toBe(true);
+	});
+
+	it("does not grant full trust after a truncated baseline fallback", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-truncated-fallback-"));
+		const path = join(cwd, "sample.txt");
+		const lines = Array.from({ length: 320 }, (_, index) => `line ${index + 1}`);
+		await writeFile(path, lines.join("\n"), "utf-8");
+		const sessionManager = SessionManager.inMemory(cwd);
+		const ctx = asContext(cwd, sessionManager);
+		const tool = createReadOverrideTool();
+		const first = await tool.execute("initial", { path }, undefined, undefined, ctx);
+		appendReadResult(sessionManager, "initial", first);
+		const changed = lines.map((line) => `${line}: ${"é".repeat(220)}`);
+		await writeFile(path, changed.join("\n"), "utf-8");
+		const fallback = await tool.execute("fallback", { path }, undefined, undefined, ctx);
+		expect(fallback.details?.readcache?.mode).toBe("baseline_fallback");
+		expect(fallback.details?.truncation?.truncated).toBe(true);
+		const nextLine = fallback.details!.truncation!.outputLines + 1;
+		const tailParams = { path, offset: nextLine, limit: 1 };
+		const tail = await tool.execute("tail", tailParams, undefined, undefined, ctx);
+		expect(getText(tail)).toContain(changed[nextLine - 1]);
+		appendReadResult(sessionManager, "fallback", fallback);
+		const replayTail = await createReadOverrideTool().execute("replay-tail", tailParams, undefined, undefined, ctx);
+		expect(getText(replayTail)).toContain(changed[nextLine - 1]);
+	});
+
+	it("repairs legacy overclaimed coverage without trusting its dependent markers", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-legacy-truncated-"));
+		const lines = Array.from({ length: 320 }, (_, index) => `line ${index + 1}: ${"é".repeat(220)}`);
+		await writeFile(join(cwd, "sample.txt"), lines.join("\n"), "utf-8");
+		const sessionManager = SessionManager.inMemory(cwd);
+		const ctx = asContext(cwd, sessionManager);
+		const first = await createReadOverrideTool().execute("legacy", { path: "sample.txt" }, undefined, undefined, ctx);
+		const nextLine = first.details!.truncation!.outputLines + 1;
+		const meta = { ...first.details!.readcache!, scopeKey: "full" as const, rangeEnd: lines.length };
+		appendReadResult(sessionManager, "legacy", { ...first, details: { ...first.details, readcache: meta } });
+		appendReadResult(sessionManager, "bad-full-marker", {
+			content: [{ type: "text", text: "[readcache: unchanged]" }],
+			details: { readcache: { ...meta, mode: "unchanged", baseHash: meta.servedHash } },
+		});
+		appendReadResult(sessionManager, "bad-range-marker", {
+			content: [{ type: "text", text: "[readcache: unchanged]" }],
+			details: { readcache: { ...meta, mode: "unchanged_range", baseHash: meta.servedHash,
+				scopeKey: `r:${nextLine}:${nextLine}`, rangeStart: nextLine, rangeEnd: nextLine } },
+		});
+		const replayTool = createReadOverrideTool();
+		const tail = await replayTool.execute("tail", { path: "sample.txt", offset: nextLine, limit: 1 }, undefined, undefined, ctx);
+		expect(getText(tail)).toContain(lines[nextLine - 1]);
+		expect(tail.details?.readcache?.mode).toBe("full");
+		const covered = await replayTool.execute("covered", { path: "sample.txt", limit: nextLine - 1 }, undefined, undefined, ctx);
+		expect(covered.details?.readcache?.mode).toBe("unchanged_range");
+	});
+
+	it.each([false, true])("grants no trust when the first line exceeds the byte limit (bypass=%s)", async (bypass_cache) => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-longline-"));
+		await writeFile(join(cwd, "sample.txt"), `${"x".repeat(52000)}\nnever shown`, "utf-8");
+		const sessionManager = SessionManager.inMemory(cwd);
+		const ctx = asContext(cwd, sessionManager);
+		const tool = createReadOverrideTool();
+		const first = await tool.execute("longline", { path: "sample.txt", bypass_cache }, undefined, undefined, ctx);
+		expect(first.details?.truncation?.outputLines).toBe(0);
+		expect(first.details?.readcache).toBeUndefined();
+		const tailParams = { path: "sample.txt", offset: 2, limit: 1 };
+		const tail = await tool.execute("tail", tailParams, undefined, undefined, ctx);
+		expect(getText(tail)).toBe("never shown");
+		appendReadResult(sessionManager, "longline", first);
+		const replayTail = await createReadOverrideTool().execute("replay-tail", tailParams, undefined, undefined, ctx);
+		expect(getText(replayTail)).toBe("never shown");
+	});
+
 	it("returns baseline slice on the first range read and unchanged_range on the second", async () => {
 		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-range-"));
 		const filePath = join(cwd, "sample.txt");

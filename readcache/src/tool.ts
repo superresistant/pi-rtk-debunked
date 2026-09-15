@@ -17,7 +17,7 @@ import {
 	SCOPE_FULL,
 } from "./constants.js";
 import { computeUnifiedDiff, isDiffUseful } from "./diff.js";
-import { buildReadCacheMetaV1 } from "./meta.js";
+import { buildReadCacheMetaV1, limitReadMetaToOutput } from "./meta.js";
 import { hashBytes, loadObject, persistObjectIfAbsent } from "./object-store.js";
 import { normalizeOffsetLimit, parseTrailingRangeIfNeeded, scopeKeyForRange } from "./path.js";
 import {
@@ -89,13 +89,21 @@ function withReadcacheDetails(details: ReadToolDetails | undefined, readcache: R
 	};
 }
 
-function attachMetaToBaseline(
+async function cacheBaselineResult(
 	baselineResult: AgentToolResult<ReadToolDetails | undefined>,
 	meta: ReadCacheMetaV1,
-): AgentToolResult<ReadToolDetailsExt | undefined> {
+	runtimeState: ReplayRuntimeState,
+	ctx: ExtensionContext,
+	text: string,
+): Promise<AgentToolResult<ReadToolDetailsExt | undefined>> {
+	const coverage = limitReadMetaToOutput(meta, baselineResult.details?.truncation);
+	if (!coverage) {
+		return baselineResult;
+	}
+	await persistAndOverlay(runtimeState, ctx, coverage.pathKey, coverage.scopeKey, coverage.servedHash, text);
 	return {
 		...baselineResult,
-		details: withReadcacheDetails(baselineResult.details, meta),
+		details: withReadcacheDetails(baselineResult.details, coverage),
 	};
 }
 
@@ -317,8 +325,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					undefined,
 					buildDebugInfo(scopeKey, undefined, "bypass_cache"),
 				);
-				await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text);
-				return attachMetaToBaseline(baselineResult, meta);
+				return cacheBaselineResult(baselineResult, meta, runtimeState, ctx, current.text);
 			}
 
 			const knowledge = buildKnowledgeForLeaf(ctx.sessionManager, runtimeState);
@@ -344,8 +351,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					undefined,
 					buildDebugInfo(scopeKey, baseHash, "no_base_hash"),
 				);
-				await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text);
-				return attachMetaToBaseline(baselineResult, meta);
+				return cacheBaselineResult(baselineResult, meta, runtimeState, ctx, current.text);
 			}
 
 			if (baseHash === current.currentHash) {
@@ -393,8 +399,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					baseHash,
 					buildDebugInfo(scopeKey, baseHash, reason, overrides),
 				);
-				await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text);
-				return attachMetaToBaseline(baselineResult, meta);
+				return cacheBaselineResult(baselineResult, meta, runtimeState, ctx, current.text);
 			};
 
 			if (!baseText) {

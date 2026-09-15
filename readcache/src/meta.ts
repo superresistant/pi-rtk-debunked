@@ -1,5 +1,6 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { READCACHE_CUSTOM_TYPE, READCACHE_META_VERSION, SCOPE_FULL } from "./constants.js";
+import { scopeKeyForRange } from "./path.js";
 import type {
 	ReadCacheDebugV1,
 	ReadCacheInvalidationV1,
@@ -218,6 +219,30 @@ export function buildInvalidationV1(pathKey: string, scopeKey: ScopeKey, at = Da
 	};
 }
 
+export function limitReadMetaToOutput(meta: ReadCacheMetaV1, truncation: unknown): ReadCacheMetaV1 | undefined {
+	if (!isRecord(truncation) || truncation.truncated !== true) {
+		return meta;
+	}
+	if (meta.mode !== "full" && meta.mode !== "baseline_fallback") {
+		return undefined;
+	}
+	if (!isNonNegativeInteger(truncation.outputLines)) {
+		return undefined;
+	}
+	const completeLines = truncation.outputLines - (truncation.lastLinePartial === true ? 1 : 0);
+	if (completeLines <= 0 || truncation.firstLineExceedsLimit === true) {
+		return undefined;
+	}
+	const rangeEnd = Math.min(meta.rangeEnd, meta.rangeStart + completeLines - 1);
+	const scopeKey = scopeKeyForRange(meta.rangeStart, rangeEnd, meta.totalLines);
+	return {
+		...meta,
+		scopeKey,
+		rangeEnd,
+		...(meta.debug ? { debug: { ...meta.debug, scope: scopeKey === SCOPE_FULL ? "full" : "range" } } : {}),
+	};
+}
+
 export function extractReadMetaFromSessionEntry(entry: SessionEntry): ReadCacheMetaV1 | undefined {
 	if (entry.type !== "message") {
 		return undefined;
@@ -232,8 +257,8 @@ export function extractReadMetaFromSessionEntry(entry: SessionEntry): ReadCacheM
 		return undefined;
 	}
 
-	const candidate = message.details.readcache;
-	return parseReadCacheMetaV1(candidate);
+	const meta = parseReadCacheMetaV1(message.details.readcache);
+	return meta ? limitReadMetaToOutput(meta, message.details.truncation) : undefined;
 }
 
 export function extractInvalidationFromSessionEntry(entry: SessionEntry): ReadCacheInvalidationV1 | undefined {
