@@ -1,7 +1,7 @@
 import { buildContextEntries, type ExtensionContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { SCOPE_FULL } from "../../src/constants.js";
-import { buildInvalidationV1, buildReadCacheMetaV1 } from "../../src/meta.js";
+import { buildInvalidationV1, buildReadCacheMetaV1, hashReadContent } from "../../src/meta.js";
 import {
 	applyInvalidation,
 	applyReadMetaTransition,
@@ -9,7 +9,6 @@ import {
 	createReplayRuntimeState,
 	findReplayStartIndex,
 	isRangeScopeBlockedByInvalidation,
-	overlaySet,
 	replayKnowledgeFromBranch,
 } from "../../src/replay.js";
 import type { KnowledgeMap, ReadCacheMetaV1, ScopeKey } from "../../src/types.js";
@@ -46,7 +45,7 @@ function createReadEntry(
 			toolCallId: `tool-${id}`,
 			toolName: "read",
 			content: [{ type: "text", text: "ok" }],
-			details: { readcache: meta },
+			details: { readcache: { ...meta, outputHash: hashReadContent([{ type: "text", text: "ok" }]) } },
 			isError: false,
 			timestamp: Date.now(),
 		},
@@ -348,9 +347,6 @@ describe("replay", () => {
 
 		expect(isRangeScopeBlockedByInvalidation(sessionManager, runtime, path, scope)).toBe(true);
 
-		overlaySet(runtime, sessionManager, path, scope, "b".repeat(64));
-		expect(isRangeScopeBlockedByInvalidation(sessionManager, runtime, path, scope)).toBe(false);
-
 		state.leafId = "e3";
 		state.branch = [
 			...state.branch,
@@ -428,7 +424,7 @@ describe("replay", () => {
 		expect(knowledge.get(path)?.get(scope)).toBeUndefined();
 	});
 
-	it("merges overlay with replay knowledge and clears overlay after leaf changes", () => {
+	it("returns isolated knowledge from only the committed active branch", () => {
 		const path = "/tmp/file.txt";
 		const runtime = createReplayRuntimeState();
 		const state: { sessionId: string; leafId: string | null; branch: SessionEntry[] } = {
@@ -446,8 +442,9 @@ describe("replay", () => {
 
 		expect(buildKnowledgeForLeaf(sessionManager, runtime).get(path)?.get(SCOPE_FULL)?.hash).toBe("a".repeat(64));
 
-		overlaySet(runtime, sessionManager, path, SCOPE_FULL, "b".repeat(64));
-		expect(buildKnowledgeForLeaf(sessionManager, runtime).get(path)?.get(SCOPE_FULL)?.hash).toBe("b".repeat(64));
+		const returned = buildKnowledgeForLeaf(sessionManager, runtime);
+		returned.get(path)!.get(SCOPE_FULL)!.hash = "b".repeat(64);
+		expect(buildKnowledgeForLeaf(sessionManager, runtime).get(path)?.get(SCOPE_FULL)?.hash).toBe("a".repeat(64));
 
 		state.leafId = null;
 		state.branch = [];

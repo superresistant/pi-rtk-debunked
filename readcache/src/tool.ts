@@ -17,14 +17,13 @@ import {
 	SCOPE_FULL,
 } from "./constants.js";
 import { computeUnifiedDiff, isDiffUseful } from "./diff.js";
-import { buildReadCacheMetaV1, limitReadMetaToOutput } from "./meta.js";
+import { buildReadCacheMetaV1, hashReadContent, limitReadMetaToOutput } from "./meta.js";
 import { hashBytes, loadObject, persistObjectIfAbsent } from "./object-store.js";
 import { normalizeOffsetLimit, parseTrailingRangeIfNeeded, scopeKeyForRange } from "./path.js";
 import {
 	buildKnowledgeForLeaf,
 	createReplayRuntimeState,
 	isRangeScopeBlockedByInvalidation,
-	overlaySet,
 	type ReplayRuntimeState,
 } from "./replay.js";
 import { compareSlices, splitLines, truncateForReadcache } from "./text.js";
@@ -82,17 +81,20 @@ function isExcludedPath(pathKey: string): boolean {
 	});
 }
 
-function withReadcacheDetails(details: ReadToolDetails | undefined, readcache: ReadCacheMetaV1): ReadToolDetailsExt {
+function withReadcacheDetails(
+	details: ReadToolDetails | undefined,
+	readcache: ReadCacheMetaV1,
+	content: AgentToolResult<unknown>["content"],
+): ReadToolDetailsExt {
 	return {
 		...(details ?? {}),
-		readcache,
+		readcache: { ...readcache, outputHash: hashReadContent(content) },
 	};
 }
 
 async function cacheBaselineResult(
 	baselineResult: AgentToolResult<ReadToolDetails | undefined>,
 	meta: ReadCacheMetaV1,
-	runtimeState: ReplayRuntimeState,
 	ctx: ExtensionContext,
 	text: string,
 	assertCurrent: () => void,
@@ -102,10 +104,10 @@ async function cacheBaselineResult(
 	if (!coverage) {
 		return baselineResult;
 	}
-	await persistAndOverlay(runtimeState, ctx, coverage.pathKey, coverage.scopeKey, coverage.servedHash, text, assertCurrent);
+	await persistSnapshot(ctx, coverage.servedHash, text, assertCurrent);
 	return {
 		...baselineResult,
-		details: withReadcacheDetails(baselineResult.details, coverage),
+		details: withReadcacheDetails(baselineResult.details, coverage, baselineResult.content),
 	};
 }
 
@@ -114,9 +116,10 @@ function buildTextResult(
 	meta: ReadCacheMetaV1,
 	truncation?: TruncationResult,
 ): AgentToolResult<ReadToolDetailsExt | undefined> {
+	const content: AgentToolResult<unknown>["content"] = [{ type: "text", text }];
 	return {
-		content: [{ type: "text", text }],
-		details: withReadcacheDetails(truncation ? { truncation } : undefined, meta),
+		content,
+		details: withReadcacheDetails(truncation ? { truncation } : undefined, meta, content),
 	};
 }
 
@@ -245,11 +248,8 @@ async function readCurrentTextStrict(absolutePath: string): Promise<CurrentTextS
 	};
 }
 
-async function persistAndOverlay(
-	runtimeState: ReplayRuntimeState,
+async function persistSnapshot(
 	ctx: ExtensionContext,
-	pathKey: string,
-	scopeKey: ScopeKey,
 	servedHash: string,
 	text: string,
 	assertCurrent: () => void,
@@ -261,7 +261,6 @@ async function persistAndOverlay(
 		// Object persistence failures are fail-open.
 	}
 	assertCurrent();
-	overlaySet(runtimeState, ctx.sessionManager, pathKey, scopeKey, servedHash);
 }
 
 export function createReadOverrideTool(runtimeState: ReplayRuntimeState = createReplayRuntimeState()) {
@@ -346,7 +345,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					undefined,
 					buildDebugInfo(scopeKey, undefined, "bypass_cache"),
 				);
-				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text, assertCurrent);
+				return cacheBaselineResult(await readSnapshotBaseline(), meta, ctx, current.text, assertCurrent);
 			}
 
 			const knowledge = buildKnowledgeForLeaf(ctx.sessionManager, runtimeState);
@@ -372,7 +371,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					undefined,
 					buildDebugInfo(scopeKey, baseHash, "no_base_hash"),
 				);
-				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text, assertCurrent);
+				return cacheBaselineResult(await readSnapshotBaseline(), meta, ctx, current.text, assertCurrent);
 			}
 
 			if (baseHash === current.currentHash) {
@@ -390,7 +389,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					buildDebugInfo(scopeKey, baseHash, "hash_match"),
 				);
 				const marker = buildUnchangedMarker(scopeKey, start, end, totalLines, false);
-				await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text, assertCurrent);
+				await persistSnapshot(ctx, current.currentHash, current.text, assertCurrent);
 				return buildMarkerResult(marker, meta);
 			}
 
@@ -420,7 +419,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					baseHash,
 					buildDebugInfo(scopeKey, baseHash, reason, overrides),
 				);
-				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text, assertCurrent);
+				return cacheBaselineResult(await readSnapshotBaseline(), meta, ctx, current.text, assertCurrent);
 			};
 
 			if (!baseText) {
@@ -442,7 +441,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 						buildDebugInfo(scopeKey, baseHash, "range_slice_unchanged", { outsideRangeChanged: true }),
 					);
 					const marker = buildUnchangedMarker(scopeKey, start, end, totalLines, true);
-					await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text, assertCurrent);
+					await persistSnapshot(ctx, current.currentHash, current.text, assertCurrent);
 					return buildMarkerResult(marker, meta);
 				}
 				return fallbackResult("range_slice_changed", { outsideRangeChanged: true });
@@ -495,7 +494,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					diffChangedLines: diff.changedLines,
 				}),
 			);
-			await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text, assertCurrent);
+			await persistSnapshot(ctx, current.currentHash, current.text, assertCurrent);
 			return buildTextResult(truncation.content, meta, truncation.truncated ? truncation : undefined);
 		},
 	};

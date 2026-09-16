@@ -105,7 +105,7 @@ flowchart TD
   F -- yes + same hash --> H[mode=unchanged/unchanged_range]
   F -- yes + full scope + useful diff --> I[mode=diff]
   F -- otherwise --> J[mode=baseline_fallback]
-  G --> K[persist object + overlay trust]
+  G --> K[persist object + attach output digest]
   H --> K
   I --> K
   J --> K
@@ -121,8 +121,9 @@ flowchart TD
 - Replay source:
   - prior `read` tool result metadata (`details.readcache`)
   - custom invalidation entries (`customType: "pi-readcache"`)
-- Overlay:
-  - in-memory, per `(sessionId, leafId)`, high seq namespace for same-turn freshness
+- Trust requires a successful, committed result whose content matches its emitted `outputHash`
+- Changed/dropped output or missing digests invalidate that path's trust; older sessions need fresh baselines
+- Uncommitted results grant no trust, so duplicate reads in the same pending batch may return full content
 
 ## Compaction/tree semantics
 
@@ -139,13 +140,13 @@ flowchart LR
 Rules:
 - replay boundary = latest compaction on active branch path + 1
 - if no compaction on path, replay starts at root
-- tree/fork/switch/compact/shutdown clear in-memory memo/overlay caches
+- tree/fork/switch/compact/shutdown clear replay memo and invalidate in-flight reads
 
 ## File map
 
 - `index.ts` - extension entrypoint + lifecycle reset hooks
 - `src/tool.ts` - `read` override decision engine
-- `src/replay.ts` - replay reconstruction, trust transitions, overlay
+- `src/replay.ts` - committed-result replay and trust transitions
 - `src/meta.ts` - metadata/invalidation validators and extractors
 - `src/commands.ts` - `/readcache-status`, `/readcache-refresh`, `readcache_refresh`
 - `src/object-store.ts` - content-addressed storage (`.pi/readcache/objects`)

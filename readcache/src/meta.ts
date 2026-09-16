@@ -1,6 +1,7 @@
-import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { READCACHE_CUSTOM_TYPE, READCACHE_META_VERSION, SCOPE_FULL } from "./constants.js";
 import { scopeKeyForRange } from "./path.js";
+import { hashText } from "./object-store.js";
 import type {
 	ReadCacheDebugV1,
 	ReadCacheInvalidationV1,
@@ -176,6 +177,7 @@ function parseReadCacheMetaV1(value: unknown): ReadCacheMetaV1 | undefined {
 		...(typeof value.baseHash === "string" ? { baseHash: value.baseHash } : {}),
 		mode,
 		...(value.diffFormat === 1 ? { diffFormat: 1 as const } : {}),
+		...(typeof value.outputHash === "string" ? { outputHash: value.outputHash } : {}),
 		totalLines: value.totalLines,
 		rangeStart: value.rangeStart,
 		rangeEnd: value.rangeEnd,
@@ -244,6 +246,10 @@ export function limitReadMetaToOutput(meta: ReadCacheMetaV1, truncation: unknown
 	};
 }
 
+export function hashReadContent(content: AgentToolResult<unknown>["content"]): string {
+	return hashText(JSON.stringify(content));
+}
+
 export function extractReadMetaFromSessionEntry(entry: SessionEntry): ReadCacheMetaV1 | undefined {
 	if (entry.type !== "message") {
 		return undefined;
@@ -259,10 +265,21 @@ export function extractReadMetaFromSessionEntry(entry: SessionEntry): ReadCacheM
 	}
 
 	const meta = parseReadCacheMetaV1(message.details.readcache);
-	return meta ? limitReadMetaToOutput(meta, message.details.truncation) : undefined;
+	if (!meta || meta.outputHash !== hashReadContent(message.content)) {
+		return undefined;
+	}
+	return limitReadMetaToOutput(meta, message.details.truncation);
 }
 
 export function extractInvalidationFromSessionEntry(entry: SessionEntry): ReadCacheInvalidationV1 | undefined {
+	if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolName === "read") {
+		const message = entry.message;
+		const meta = isRecord(message.details) ? parseReadCacheMetaV1(message.details.readcache) : undefined;
+		if (meta && !extractReadMetaFromSessionEntry(entry)) {
+			return buildInvalidationV1(meta.pathKey, SCOPE_FULL, message.timestamp);
+		}
+		return undefined;
+	}
 	if (entry.type !== "custom" || entry.customType !== READCACHE_CUSTOM_TYPE) {
 		return undefined;
 	}

@@ -14,23 +14,14 @@ type SessionManagerView = ExtensionContext["sessionManager"];
 
 type RangeBlockersByPath = Map<string, Set<ScopeRangeKey>>;
 
-const OVERLAY_SEQ_START = 1_000_000_000;
-
 interface ReplayMemoEntry {
 	knowledge: KnowledgeMap;
 	blockedRangesByPath: RangeBlockersByPath;
 }
 
-interface OverlayState {
-	leafId: string | null;
-	knowledge: KnowledgeMap;
-}
-
 export interface ReplayRuntimeState {
 	generation: number;
 	memoByLeaf: Map<string, ReplayMemoEntry>;
-	overlayBySession: Map<string, OverlayState>;
-	nextOverlaySeq: number;
 }
 
 export interface ReplayBoundary {
@@ -118,37 +109,6 @@ export function setTrust(knowledge: KnowledgeMap, pathKey: string, scopeKey: Sco
 	scopes.set(scopeKey, { hash, seq });
 }
 
-function mergeKnowledge(base: KnowledgeMap, overlay: KnowledgeMap): KnowledgeMap {
-	const merged = cloneKnowledgeMap(base);
-	for (const [pathKey, overlayScopes] of overlay.entries()) {
-		const targetScopes = ensureScopeMap(merged, pathKey);
-		for (const [scopeKey, trust] of overlayScopes.entries()) {
-			targetScopes.set(scopeKey, { ...trust });
-		}
-	}
-	return merged;
-}
-
-function ensureOverlayForLeaf(runtimeState: ReplayRuntimeState, sessionId: string, leafId: string | null): OverlayState {
-	const existing = runtimeState.overlayBySession.get(sessionId);
-	if (!existing || existing.leafId !== leafId) {
-		const fresh: OverlayState = {
-			leafId,
-			knowledge: new Map(),
-		};
-		runtimeState.overlayBySession.set(sessionId, fresh);
-		return fresh;
-	}
-	return existing;
-}
-
-function leafHasChildren(sessionManager: SessionManagerView, leafId: string | null): boolean {
-	if (!leafId) {
-		return false;
-	}
-	return sessionManager.getEntries().some((entry) => entry.parentId === leafId);
-}
-
 function replaySnapshotFromBranch(branchEntries: SessionEntry[], startIndex: number): ReplayMemoEntry {
 	const knowledge: KnowledgeMap = new Map();
 	const blockedRangesByPath: RangeBlockersByPath = new Map();
@@ -183,7 +143,7 @@ function replaySnapshotFromBranch(branchEntries: SessionEntry[], startIndex: num
 function getReplayMemoEntryForLeaf(
 	sessionManager: SessionManagerView,
 	runtimeState: ReplayRuntimeState,
-): { memoEntry: ReplayMemoEntry; sessionId: string; leafId: string | null } {
+): ReplayMemoEntry {
 	const sessionId = sessionManager.getSessionId();
 	const leafId = sessionManager.getLeafId();
 	const branchEntries = sessionManager.getBranch();
@@ -197,27 +157,19 @@ function getReplayMemoEntryForLeaf(
 		runtimeState.memoByLeaf.set(memoKey, memoEntry);
 	}
 
-	return {
-		memoEntry,
-		sessionId,
-		leafId,
-	};
+	return memoEntry;
 }
 
 export function createReplayRuntimeState(): ReplayRuntimeState {
 	return {
 		generation: 0,
 		memoByLeaf: new Map(),
-		overlayBySession: new Map(),
-		nextOverlaySeq: OVERLAY_SEQ_START,
 	};
 }
 
 export function clearReplayRuntimeState(runtimeState: ReplayRuntimeState): void {
 	runtimeState.generation += 1;
 	runtimeState.memoByLeaf.clear();
-	runtimeState.overlayBySession.clear();
-	runtimeState.nextOverlaySeq = OVERLAY_SEQ_START;
 }
 
 export function findReplayStartIndex(branchEntries: SessionEntry[]): ReplayBoundary {
@@ -333,12 +285,7 @@ export function buildKnowledgeForLeaf(
 	sessionManager: SessionManagerView,
 	runtimeState: ReplayRuntimeState,
 ): KnowledgeMap {
-	const { memoEntry, sessionId, leafId } = getReplayMemoEntryForLeaf(sessionManager, runtimeState);
-	const overlayState = ensureOverlayForLeaf(runtimeState, sessionId, leafId);
-	if (leafHasChildren(sessionManager, leafId)) {
-		overlayState.knowledge.clear();
-	}
-	return mergeKnowledge(memoEntry.knowledge, overlayState.knowledge);
+	return cloneKnowledgeMap(getReplayMemoEntryForLeaf(sessionManager, runtimeState).knowledge);
 }
 
 export function isRangeScopeBlockedByInvalidation(
@@ -351,28 +298,5 @@ export function isRangeScopeBlockedByInvalidation(
 		return false;
 	}
 
-	const { memoEntry, sessionId, leafId } = getReplayMemoEntryForLeaf(sessionManager, runtimeState);
-	const blockedScopes = memoEntry.blockedRangesByPath.get(pathKey);
-	if (!blockedScopes?.has(scopeKey)) {
-		return false;
-	}
-
-	const overlayState = ensureOverlayForLeaf(runtimeState, sessionId, leafId);
-	const overlayScopeTrust = overlayState.knowledge.get(pathKey)?.get(scopeKey);
-	return overlayScopeTrust === undefined;
-}
-
-export function overlaySet(
-	runtimeState: ReplayRuntimeState,
-	sessionManager: SessionManagerView,
-	pathKey: string,
-	scopeKey: ScopeKey,
-	servedHash: string,
-): void {
-	const sessionId = sessionManager.getSessionId();
-	const leafId = sessionManager.getLeafId();
-	const overlayState = ensureOverlayForLeaf(runtimeState, sessionId, leafId);
-	const seq = runtimeState.nextOverlaySeq;
-	runtimeState.nextOverlaySeq += 1;
-	setTrust(overlayState.knowledge, pathKey, scopeKey, servedHash, seq);
+	return getReplayMemoEntryForLeaf(sessionManager, runtimeState).blockedRangesByPath.get(pathKey)?.has(scopeKey) ?? false;
 }

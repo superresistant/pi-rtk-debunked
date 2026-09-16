@@ -1,11 +1,12 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionManager, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type AgentToolResult, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { applyPatch } from "diff";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hashText, loadObject } from "../../src/object-store.js";
 import { createReadOverrideTool } from "../../src/tool.js";
+import type { ReadToolDetailsExt } from "../../src/types.js";
 
 const hooks = vi.hoisted(() => ({ afterBaseline: undefined as (() => Promise<void>) | undefined }));
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
@@ -29,6 +30,13 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
 
 afterEach(() => { hooks.afterBaseline = undefined; });
 
+function appendResult(ctx: ExtensionContext, result: AgentToolResult<ReadToolDetailsExt | undefined>) {
+	(ctx.sessionManager as SessionManager).appendMessage({
+		role: "toolResult", toolCallId: "read", toolName: "read", content: result.content,
+		details: result.details, isError: false, timestamp: Date.now(),
+	});
+}
+
 describe("integration: snapshot consistency", () => {
 	it.each([false, true])("renders the same snapshot it hashes when a file changes during a read (bypass=%s)", async (bypass_cache) => {
 		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-snapshot-"));
@@ -41,6 +49,7 @@ describe("integration: snapshot consistency", () => {
 		const result = await tool.execute("race", { path, bypass_cache }, undefined, undefined, ctx);
 		expect(result.content).toEqual([{ type: "text", text: current }]);
 		expect(result.details?.readcache?.servedHash).toBe(hashText(current));
+		appendResult(ctx, result);
 		hooks.afterBaseline = undefined;
 		const again = await tool.execute("again", { path }, undefined, undefined, ctx);
 		expect(again.details?.readcache?.mode).toBe("unchanged");
@@ -71,7 +80,8 @@ describe("integration: snapshot consistency", () => {
 		await writeFile(path, "original anchor");
 		const ctx = { cwd, sessionManager: SessionManager.inMemory(cwd) } as unknown as ExtensionContext;
 		const tool = createReadOverrideTool();
-		await tool.execute("anchor", { path }, undefined, undefined, ctx);
+		const anchor = await tool.execute("anchor", { path }, undefined, undefined, ctx);
+		appendResult(ctx, anchor);
 		await writeFile(path, "intermediate version");
 		hooks.afterBaseline = () => writeFile(path, "final version");
 		const result = await tool.execute("fallback", { path }, undefined, undefined, ctx);
@@ -89,6 +99,7 @@ describe("integration: snapshot consistency", () => {
 		const ctx = { cwd, sessionManager: SessionManager.inMemory(cwd) } as unknown as ExtensionContext;
 		const tool = createReadOverrideTool();
 		const first = await tool.execute("bom", { path }, undefined, undefined, ctx);
+		appendResult(ctx, first);
 		expect(await loadObject(cwd, first.details!.readcache!.servedHash)).toBe(initial);
 		lines[0] = "changed first line";
 		const current = `\uFEFF${lines.join("\n")}\n`;

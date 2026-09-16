@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionManager, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearReplayRuntimeState, createReplayRuntimeState } from "../../src/replay.js";
+import { buildKnowledgeForLeaf, clearReplayRuntimeState, createReplayRuntimeState } from "../../src/replay.js";
 import { createReadOverrideTool } from "../../src/tool.js";
 
 const hooks = vi.hoisted(() => ({ onPersist: undefined as (() => Promise<void>) | undefined }));
@@ -48,7 +48,7 @@ describe("integration: interrupted reads", () => {
 		const rejection = expect(pending).rejects.toThrow(/aborted|invalidated/i);
 		pause.release();
 		await rejection;
-		for (const overlay of runtime.overlayBySession.values()) expect(overlay.knowledge.size).toBe(0);
+		expect(buildKnowledgeForLeaf(ctx.sessionManager, runtime).size).toBe(0);
 		hooks.onPersist = undefined;
 		const next = await tool.execute("next", { path }, undefined, undefined, ctx);
 		expect(next.details?.readcache?.mode).toBe("full");

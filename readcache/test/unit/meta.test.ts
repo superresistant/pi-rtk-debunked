@@ -6,6 +6,7 @@ import {
 	buildReadCacheMetaV1,
 	extractInvalidationFromSessionEntry,
 	extractReadMetaFromSessionEntry,
+	hashReadContent,
 	isReadCacheInvalidationV1,
 	isReadCacheMetaV1,
 	limitReadMetaToOutput,
@@ -129,6 +130,7 @@ describe("meta", () => {
 			rangeStart: 1,
 			rangeEnd: 2,
 			bytes: 12,
+			outputHash: hashReadContent([{ type: "text", text: "ok" }]),
 		});
 
 		const validEntry: SessionEntry = {

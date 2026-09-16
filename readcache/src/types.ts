@@ -47,6 +47,7 @@ export interface ReadCacheMetaV1 {
 	baseHash?: string;
 	mode: ReadCacheMode;
 	diffFormat?: 1;
+	outputHash?: string;
 	totalLines: number;
 	rangeStart: number;
 	rangeEnd: number;

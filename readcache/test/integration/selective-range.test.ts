@@ -8,6 +8,7 @@ import {
 	type ReadToolDetails,
 } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
+import { hashReadContent } from "../../src/meta.js";
 import { createReplayRuntimeState } from "../../src/replay.js";
 import { createReadOverrideTool } from "../../src/tool.js";
 import type { ReadToolDetailsExt } from "../../src/types.js";
@@ -121,13 +122,15 @@ describe("integration: selective range behavior", () => {
 		const nextLine = first.details!.truncation!.outputLines + 1;
 		const meta = { ...first.details!.readcache!, scopeKey: "full" as const, rangeEnd: lines.length };
 		appendReadResult(sessionManager, "legacy", { ...first, details: { ...first.details, readcache: meta } });
+		const content = [{ type: "text" as const, text: "[readcache: unchanged]" }];
+		const outputHash = hashReadContent(content);
 		appendReadResult(sessionManager, "bad-full-marker", {
-			content: [{ type: "text", text: "[readcache: unchanged]" }],
-			details: { readcache: { ...meta, mode: "unchanged", baseHash: meta.servedHash } },
+			content,
+			details: { readcache: { ...meta, outputHash, mode: "unchanged", baseHash: meta.servedHash } },
 		});
 		appendReadResult(sessionManager, "bad-range-marker", {
-			content: [{ type: "text", text: "[readcache: unchanged]" }],
-			details: { readcache: { ...meta, mode: "unchanged_range", baseHash: meta.servedHash,
+			content,
+			details: { readcache: { ...meta, outputHash, mode: "unchanged_range", baseHash: meta.servedHash,
 				scopeKey: `r:${nextLine}:${nextLine}`, rangeStart: nextLine, rangeEnd: nextLine } },
 		});
 		const replayTool = createReadOverrideTool();
