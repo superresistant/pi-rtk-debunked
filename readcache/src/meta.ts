@@ -250,7 +250,7 @@ export function extractReadMetaFromSessionEntry(entry: SessionEntry): ReadCacheM
 	}
 
 	const message = entry.message;
-	if (message.role !== "toolResult" || message.toolName !== "read") {
+	if (message.role !== "toolResult" || message.toolName !== "read" || message.isError) {
 		return undefined;
 	}
 

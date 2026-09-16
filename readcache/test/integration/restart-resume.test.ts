@@ -89,6 +89,23 @@ function appendAssistantSeed(sessionManager: SessionManager, text: string): void
 }
 
 describe("integration: restart and resume", () => {
+	it("does not derive replay trust from an errored read carrying leftover metadata", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-errored-replay-"));
+		const path = join(cwd, "sample.txt");
+		await writeFile(path, "file contents", "utf-8");
+		const sessionManager = SessionManager.inMemory(cwd);
+		const ctx = asContext(cwd, sessionManager);
+		const result = await createReadOverrideTool().execute("original", { path }, undefined, undefined, ctx);
+		sessionManager.appendMessage({
+			role: "toolResult", toolCallId: "original", toolName: "read",
+			content: [{ type: "text", text: "Operation aborted" }],
+			details: result.details, isError: true, timestamp: Date.now(),
+		});
+		const resumed = await createReadOverrideTool().execute("resumed", { path }, undefined, undefined, ctx);
+		expect(resumed.details?.readcache?.mode).toBe("full");
+		expect(resumed.content).toEqual([{ type: "text", text: "file contents" }]);
+	});
+
 	it("re-anchors after a legacy diff instead of trusting its target hash or dependent markers", async () => {
 		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-legacy-diff-"));
 		const path = join(cwd, "sample.txt");

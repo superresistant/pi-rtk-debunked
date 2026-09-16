@@ -27,6 +27,7 @@ interface OverlayState {
 }
 
 export interface ReplayRuntimeState {
+	generation: number;
 	memoByLeaf: Map<string, ReplayMemoEntry>;
 	overlayBySession: Map<string, OverlayState>;
 	nextOverlaySeq: number;
@@ -205,6 +206,7 @@ function getReplayMemoEntryForLeaf(
 
 export function createReplayRuntimeState(): ReplayRuntimeState {
 	return {
+		generation: 0,
 		memoByLeaf: new Map(),
 		overlayBySession: new Map(),
 		nextOverlaySeq: OVERLAY_SEQ_START,
@@ -212,6 +214,7 @@ export function createReplayRuntimeState(): ReplayRuntimeState {
 }
 
 export function clearReplayRuntimeState(runtimeState: ReplayRuntimeState): void {
+	runtimeState.generation += 1;
 	runtimeState.memoByLeaf.clear();
 	runtimeState.overlayBySession.clear();
 	runtimeState.nextOverlaySeq = OVERLAY_SEQ_START;

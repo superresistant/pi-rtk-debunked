@@ -53,22 +53,13 @@ function lineCount(text: string): number {
 	return text.split("\n").length;
 }
 
-function countChangedLinesFromPatch(diffText: string): { added: number; removed: number } {
+function countChangedLinesFromPatch(hunks: ReturnType<typeof structuredPatch>["hunks"]): { added: number; removed: number } {
 	let added = 0;
 	let removed = 0;
-	for (const line of diffText.split("\n")) {
-		if (!line) {
-			continue;
-		}
-		if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) {
-			continue;
-		}
-		if (line.startsWith("+")) {
-			added += 1;
-			continue;
-		}
-		if (line.startsWith("-")) {
-			removed += 1;
+	for (const hunk of hunks) {
+		for (const line of hunk.lines) {
+			if (line.startsWith("+")) added += 1;
+			if (line.startsWith("-")) removed += 1;
 		}
 	}
 	return { added, removed };
@@ -88,7 +79,7 @@ export function computeUnifiedDiff(baseText: string, currentText: string, pathDi
 		return undefined;
 	}
 
-	const { added, removed } = countChangedLinesFromPatch(diffText);
+	const { added, removed } = countChangedLinesFromPatch(patch.hunks);
 	return {
 		diffText,
 		changedLines: Math.max(added, removed),

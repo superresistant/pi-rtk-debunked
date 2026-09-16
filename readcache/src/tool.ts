@@ -95,12 +95,14 @@ async function cacheBaselineResult(
 	runtimeState: ReplayRuntimeState,
 	ctx: ExtensionContext,
 	text: string,
+	assertCurrent: () => void,
 ): Promise<AgentToolResult<ReadToolDetailsExt | undefined>> {
+	assertCurrent();
 	const coverage = limitReadMetaToOutput(meta, baselineResult.details?.truncation);
 	if (!coverage) {
 		return baselineResult;
 	}
-	await persistAndOverlay(runtimeState, ctx, coverage.pathKey, coverage.scopeKey, coverage.servedHash, text);
+	await persistAndOverlay(runtimeState, ctx, coverage.pathKey, coverage.scopeKey, coverage.servedHash, text, assertCurrent);
 	return {
 		...baselineResult,
 		details: withReadcacheDetails(baselineResult.details, coverage),
@@ -250,12 +252,15 @@ async function persistAndOverlay(
 	scopeKey: ScopeKey,
 	servedHash: string,
 	text: string,
+	assertCurrent: () => void,
 ): Promise<void> {
+	assertCurrent();
 	try {
 		await persistObjectIfAbsent(ctx.cwd, servedHash, text);
 	} catch {
 		// Object persistence failures are fail-open.
 	}
+	assertCurrent();
 	overlaySet(runtimeState, ctx.sessionManager, pathKey, scopeKey, servedHash);
 }
 
@@ -276,7 +281,15 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 				throw new Error("read override requires extension context");
 			}
 
-			throwIfAborted(signal);
+			const generation = runtimeState.generation;
+			const sessionId = ctx.sessionManager.getSessionId();
+			const assertCurrent = () => {
+				throwIfAborted(signal);
+				if (runtimeState.generation !== generation || ctx.sessionManager.getSessionId() !== sessionId) {
+					throw new Error("Read invalidated by session or cache reset");
+				}
+			};
+			assertCurrent();
 
 			const parsed = parseTrailingRangeIfNeeded(params.path, params.offset, params.limit, ctx.cwd);
 			const baseline = createReadTool(ctx.cwd);
@@ -333,7 +346,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					undefined,
 					buildDebugInfo(scopeKey, undefined, "bypass_cache"),
 				);
-				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text);
+				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text, assertCurrent);
 			}
 
 			const knowledge = buildKnowledgeForLeaf(ctx.sessionManager, runtimeState);
@@ -359,7 +372,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					undefined,
 					buildDebugInfo(scopeKey, baseHash, "no_base_hash"),
 				);
-				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text);
+				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text, assertCurrent);
 			}
 
 			if (baseHash === current.currentHash) {
@@ -377,7 +390,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					buildDebugInfo(scopeKey, baseHash, "hash_match"),
 				);
 				const marker = buildUnchangedMarker(scopeKey, start, end, totalLines, false);
-				await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text);
+				await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text, assertCurrent);
 				return buildMarkerResult(marker, meta);
 			}
 
@@ -407,7 +420,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					baseHash,
 					buildDebugInfo(scopeKey, baseHash, reason, overrides),
 				);
-				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text);
+				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text, assertCurrent);
 			};
 
 			if (!baseText) {
@@ -429,7 +442,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 						buildDebugInfo(scopeKey, baseHash, "range_slice_unchanged", { outsideRangeChanged: true }),
 					);
 					const marker = buildUnchangedMarker(scopeKey, start, end, totalLines, true);
-					await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text);
+					await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text, assertCurrent);
 					return buildMarkerResult(marker, meta);
 				}
 				return fallbackResult("range_slice_changed", { outsideRangeChanged: true });
@@ -482,7 +495,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					diffChangedLines: diff.changedLines,
 				}),
 			);
-			await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text);
+			await persistAndOverlay(runtimeState, ctx, pathKey, scopeKey, current.currentHash, current.text, assertCurrent);
 			return buildTextResult(truncation.content, meta, truncation.truncated ? truncation : undefined);
 		},
 	};

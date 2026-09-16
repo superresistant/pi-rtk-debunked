@@ -36,6 +36,18 @@ describe("diff", () => {
 		expect(applyPatch(baseText, diff.diffText)).toBe(currentText);
 	});
 
+	it("counts changed content that resembles patch file headers", () => {
+		const lines = Array.from({ length: 30 }, (_, index) => `line ${index + 1}: original payload`);
+		lines[15] = "--old content";
+		const baseText = lines.join("\n");
+		lines[15] = "++new content";
+		const currentText = lines.join("\n");
+		const diff = computeUnifiedDiff(baseText, currentText, "sample.txt")!;
+		expect(isDiffUseful(diff.diffText, baseText, currentText)).toBe(true);
+		expect(applyPatch(baseText, diff.diffText)).toBe(currentText);
+		expect(diff).toMatchObject({ addedLines: 1, removedLines: 1, changedLines: 1 });
+	});
+
 	it("returns undefined when there are no line-level hunks", () => {
 		const diff = computeUnifiedDiff("same\ntext", "same\ntext", "sample.txt");
 		expect(diff).toBeUndefined();
