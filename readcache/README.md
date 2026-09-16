@@ -124,6 +124,7 @@ flowchart TD
 - Trust requires a successful, committed result whose content matches its emitted `outputHash`
 - Changed/dropped output or missing digests invalidate that path's trust; older sessions need fresh baselines
 - Uncommitted results grant no trust, so duplicate reads in the same pending batch may return full content
+- Newly displayed content supersedes older overlapping anchors with different hashes; disjoint ranges remain cached
 
 ## Compaction/tree semantics
 

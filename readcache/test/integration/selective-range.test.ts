@@ -45,6 +45,66 @@ function getText(result: AgentToolResult<ReadToolDetails | undefined>): string {
 }
 
 describe("integration: selective range behavior", () => {
+	it.each([true, false])("does not hide reversals behind superseded overlapping anchors (full=%s)", async (full) => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-superseded-"));
+		const path = join(cwd, "sample.txt");
+		const lines = Array.from({ length: 12 }, (_, index) => `line ${index + 1}: version A`);
+		const original = lines.join("\n");
+		await writeFile(path, original);
+		const session = SessionManager.inMemory(cwd);
+		const ctx = asContext(cwd, session);
+		const tool = createReadOverrideTool();
+		const initialParams = full ? { path } : { path, offset: 2, limit: 4 };
+		const first = await tool.execute("anchor", initialParams, undefined, undefined, ctx);
+		appendReadResult(session, "anchor", first);
+		lines[3] = "line 4: version B";
+		await writeFile(path, lines.join("\n"));
+		const overlap = await tool.execute("overlap", { path, offset: 4, limit: 3 }, undefined, undefined, ctx);
+		expect(getText(overlap)).toContain("line 4: version B");
+		appendReadResult(session, "overlap", overlap);
+		await writeFile(path, original);
+		const reverted = await tool.execute("reverted", initialParams, undefined, undefined, ctx);
+		expect(reverted.details?.readcache?.mode).toBe("full");
+		expect(getText(reverted)).toContain("line 4: version A");
+	});
+
+	it.each([4, 7])("keeps disjoint range anchors after a baseline starting at line %s", async (offset) => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-disjoint-"));
+		const path = join(cwd, "sample.txt");
+		const lines = Array.from({ length: 12 }, (_, index) => `line ${index + 1}: version A`);
+		await writeFile(path, lines.join("\n"));
+		const session = SessionManager.inMemory(cwd);
+		const ctx = asContext(cwd, session);
+		const tool = createReadOverrideTool();
+		const first = await tool.execute("anchor", { path, offset: 2, limit: 2 }, undefined, undefined, ctx);
+		appendReadResult(session, "anchor", first);
+		lines[offset - 1] = "version B";
+		await writeFile(path, lines.join("\n"));
+		const separate = await tool.execute("separate", { path, offset, limit: 2 }, undefined, undefined, ctx);
+		appendReadResult(session, "separate", separate);
+		const unchanged = await tool.execute("unchanged", { path, offset: 2, limit: 2 }, undefined, undefined, ctx);
+		expect(unchanged.details?.readcache?.mode).toBe("unchanged_range");
+	});
+
+	it("keeps the full anchor when an unchanged range only reports outside changes", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-outside-marker-"));
+		const path = join(cwd, "sample.txt");
+		const original = "one\ntwo\nthree\nfour";
+		await writeFile(path, original);
+		const session = SessionManager.inMemory(cwd);
+		const ctx = asContext(cwd, session);
+		const tool = createReadOverrideTool();
+		const first = await tool.execute("anchor", { path }, undefined, undefined, ctx);
+		appendReadResult(session, "anchor", first);
+		await writeFile(path, "ONE\ntwo\nthree\nfour");
+		const marker = await tool.execute("outside", { path, offset: 2, limit: 2 }, undefined, undefined, ctx);
+		expect(marker.details?.readcache?.mode).toBe("unchanged_range");
+		appendReadResult(session, "outside", marker);
+		await writeFile(path, original);
+		const full = await tool.execute("full", { path }, undefined, undefined, ctx);
+		expect(full.details?.readcache?.mode).toBe("unchanged");
+	});
+
 	it.each([
 		{ name: "byte limit", total: 320, width: 220, offset: 1, limit: 320, bypass_cache: false },
 		{ name: "line limit", total: 2200, width: 1, offset: 1, limit: 2200, bypass_cache: false },

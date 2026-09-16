@@ -109,6 +109,20 @@ export function setTrust(knowledge: KnowledgeMap, pathKey: string, scopeKey: Sco
 	scopes.set(scopeKey, { hash, seq });
 }
 
+function discardSupersededOverlaps(knowledge: KnowledgeMap, pathKey: string, scopeKey: ScopeKey, hash: string): void {
+	const scopes = knowledge.get(pathKey);
+	if (!scopes) return;
+	const [, start, end] = scopeKey.split(":");
+	for (const [otherScope, trust] of scopes) {
+		if (trust.hash === hash) continue;
+		const [, otherStart, otherEnd] = otherScope.split(":");
+		if (scopeKey === SCOPE_FULL || otherScope === SCOPE_FULL ||
+			(Number(start) <= Number(otherEnd) && Number(otherStart) <= Number(end))) {
+			scopes.delete(otherScope);
+		}
+	}
+}
+
 function replaySnapshotFromBranch(branchEntries: SessionEntry[], startIndex: number): ReplayMemoEntry {
 	const knowledge: KnowledgeMap = new Map();
 	const blockedRangesByPath: RangeBlockersByPath = new Map();
@@ -154,6 +168,7 @@ function getReplayMemoEntryForLeaf(
 	if (!memoEntry) {
 		const replayMemo = replaySnapshotFromBranch(branchEntries, boundary.startIndex);
 		memoEntry = cloneReplayMemoEntry(replayMemo);
+		runtimeState.memoByLeaf.clear();
 		runtimeState.memoByLeaf.set(memoKey, memoEntry);
 	}
 
@@ -207,6 +222,7 @@ export function applyReadMetaTransition(
 	const rangeTrust = scopeKey === SCOPE_FULL ? undefined : getTrust(knowledge, pathKey, scopeKey);
 
 	if (mode === "full" || mode === "baseline_fallback") {
+		discardSupersededOverlaps(knowledge, pathKey, scopeKey, servedHash);
 		setTrust(knowledge, pathKey, scopeKey, servedHash, seq);
 		if (blockedRangesByPath && isRangeScope(scopeKey)) {
 			clearRangeBlocker(blockedRangesByPath, pathKey, scopeKey);
@@ -235,6 +251,7 @@ export function applyReadMetaTransition(
 		if (!fullTrust || fullTrust.hash !== baseHash) {
 			return;
 		}
+		discardSupersededOverlaps(knowledge, pathKey, SCOPE_FULL, servedHash);
 		setTrust(knowledge, pathKey, SCOPE_FULL, servedHash, seq);
 		return;
 	}

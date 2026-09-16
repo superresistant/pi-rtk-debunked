@@ -233,6 +233,23 @@ describe("replay", () => {
 		expect(knowledge.get(path)?.get(SCOPE_FULL)).toEqual({ hash: "b".repeat(64), seq: 2 });
 	});
 
+	it.each(["full", "diff"] as const)("discards older range anchors after an accepted full-scope %s", (mode) => {
+		const pathKey = "/tmp/file.txt";
+		const knowledge: KnowledgeMap = new Map();
+		applyReadMetaTransition(knowledge, createMeta({
+			pathKey, scopeKey: SCOPE_FULL, servedHash: "a".repeat(64), mode: "full",
+		}), 1);
+		applyReadMetaTransition(knowledge, createMeta({
+			pathKey, scopeKey: "r:2:4", servedHash: "a".repeat(64), mode: "full", rangeStart: 2, rangeEnd: 4,
+		}), 2);
+		expect(knowledge.get(pathKey)?.size).toBe(2);
+		applyReadMetaTransition(knowledge, createMeta({
+			pathKey, scopeKey: SCOPE_FULL, servedHash: "b".repeat(64), baseHash: "a".repeat(64), mode,
+		}), 3);
+		expect([...knowledge.get(pathKey)!.keys()]).toEqual([SCOPE_FULL]);
+		expect(knowledge.get(pathKey)?.get(SCOPE_FULL)).toEqual({ hash: "b".repeat(64), seq: 3 });
+	});
+
 	it("applies_unchanged_range_with_matching_range_anchor", () => {
 		const path = "/tmp/file.txt";
 		const scope = "r:2:4" as const;
@@ -298,10 +315,11 @@ describe("replay", () => {
 		);
 		applyReadMetaTransition(
 			knowledge,
-			createMeta({ pathKey: path, scopeKey: "r:2:4", servedHash: "b".repeat(64), mode: "full", rangeStart: 2, rangeEnd: 4 }),
+			createMeta({ pathKey: path, scopeKey: "r:2:4", servedHash: "a".repeat(64), mode: "full", rangeStart: 2, rangeEnd: 4 }),
 			2,
 		);
 
+		expect(knowledge.get(path)?.size).toBe(2);
 		applyInvalidation(knowledge, buildInvalidationV1(path, SCOPE_FULL, Date.now()));
 		expect(knowledge.has(path)).toBe(false);
 	});
@@ -318,10 +336,11 @@ describe("replay", () => {
 		);
 		applyReadMetaTransition(
 			knowledge,
-			createMeta({ pathKey: path, scopeKey: scope, servedHash: "b".repeat(64), mode: "full", rangeStart: 2, rangeEnd: 4 }),
+			createMeta({ pathKey: path, scopeKey: scope, servedHash: "a".repeat(64), mode: "full", rangeStart: 2, rangeEnd: 4 }),
 			2,
 		);
 
+		expect(knowledge.get(path)?.size).toBe(2);
 		applyInvalidation(knowledge, buildInvalidationV1(path, scope, Date.now()));
 		expect(knowledge.get(path)?.get(scope)).toBeUndefined();
 		expect(knowledge.get(path)?.get(SCOPE_FULL)).toEqual({ hash: "a".repeat(64), seq: 1 });
@@ -422,6 +441,24 @@ describe("replay", () => {
 		const knowledge = replayKnowledgeFromBranch(entries, 0);
 		expect(knowledge.get(path)?.get(SCOPE_FULL)).toEqual({ hash: "a".repeat(64), seq: 2 });
 		expect(knowledge.get(path)?.get(scope)).toBeUndefined();
+	});
+
+	it("retains only the active replay snapshot during linear session growth", () => {
+		const runtime = createReplayRuntimeState();
+		const state: { sessionId: string; leafId: string | null; branch: SessionEntry[] } = {
+			sessionId: "growing-session", leafId: null, branch: [],
+		};
+		const sessionManager = createSessionManagerStub(state);
+		for (let index = 1; index <= 100; index += 1) {
+			const id = `entry-${index}`;
+			state.branch.push(createReadEntry(id, state.leafId, createMeta({
+				pathKey: `/tmp/file-${index}.txt`, scopeKey: SCOPE_FULL, servedHash: "a".repeat(64), mode: "full",
+			})));
+			state.leafId = id;
+			expect(buildKnowledgeForLeaf(sessionManager, runtime).size).toBe(index);
+		}
+		expect(runtime.memoByLeaf.size).toBe(1);
+		expect([...runtime.memoByLeaf.values()].reduce((total, memo) => total + memo.knowledge.size, 0)).toBe(100);
 	});
 
 	it("returns isolated knowledge from only the committed active branch", () => {
