@@ -119,7 +119,8 @@ export async function loadObject(repoRoot: string, hash: string): Promise<string
 	ensureValidHash(hash);
 	const objectPath = objectPathForHash(repoRoot, hash);
 	try {
-		return await readFile(objectPath, "utf-8");
+		const text = await readFile(objectPath, "utf-8");
+		return hashText(text) === hash ? text : undefined;
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
 			return undefined;

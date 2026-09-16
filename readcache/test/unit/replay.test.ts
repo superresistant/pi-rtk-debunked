@@ -22,6 +22,7 @@ function createMeta(overrides: Partial<Omit<ReadCacheMetaV1, "v">> & Pick<ReadCa
 		scopeKey: overrides.scopeKey,
 		servedHash: overrides.servedHash,
 		mode: overrides.mode,
+		...(overrides.mode === "diff" ? { diffFormat: 1 as const } : {}),
 		...(overrides.baseHash !== undefined ? { baseHash: overrides.baseHash } : {}),
 		totalLines: overrides.totalLines ?? 10,
 		rangeStart: overrides.rangeStart ?? 1,

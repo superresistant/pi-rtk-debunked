@@ -243,6 +243,11 @@ export function applyReadMetaTransition(
 	blockedRangesByPath?: RangeBlockersByPath,
 ): void {
 	const { pathKey, scopeKey, servedHash, baseHash, mode } = meta;
+	if (mode === "diff" && meta.diffFormat !== 1) {
+		knowledge.delete(pathKey);
+		blockedRangesByPath?.delete(pathKey);
+		return;
+	}
 	const fullTrust = getTrust(knowledge, pathKey, SCOPE_FULL);
 	const rangeTrust = scopeKey === SCOPE_FULL ? undefined : getTrust(knowledge, pathKey, scopeKey);
 

@@ -37,7 +37,7 @@ import type {
 	ScopeTrust,
 } from "./types.js";
 
-const UTF8_STRICT_DECODER = new TextDecoder("utf-8", { fatal: true });
+const UTF8_STRICT_DECODER = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 interface CurrentTextState {
 	bytes: Buffer;
@@ -151,6 +151,7 @@ function buildReadcacheMeta(
 		servedHash,
 		...(baseHash !== undefined ? { baseHash } : {}),
 		mode,
+		...(mode === "diff" ? { diffFormat: 1 as const } : {}),
 		totalLines,
 		rangeStart,
 		rangeEnd,
@@ -296,6 +297,13 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 				return baselineResult;
 			}
 
+			const readSnapshotBaseline = () => createReadTool(ctx.cwd, {
+				operations: {
+					access: async () => {},
+					readFile: async () => current.bytes,
+				},
+			}).execute(toolCallId, baselineInput, signal);
+
 			let start: number;
 			let end: number;
 			let totalLines: number;
@@ -305,7 +313,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 				end = normalizedRange.end;
 				totalLines = normalizedRange.totalLines;
 			} catch {
-				return baselineResult;
+				return readSnapshotBaseline();
 			}
 
 			throwIfAborted(signal);
@@ -325,7 +333,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					undefined,
 					buildDebugInfo(scopeKey, undefined, "bypass_cache"),
 				);
-				return cacheBaselineResult(baselineResult, meta, runtimeState, ctx, current.text);
+				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text);
 			}
 
 			const knowledge = buildKnowledgeForLeaf(ctx.sessionManager, runtimeState);
@@ -351,7 +359,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					undefined,
 					buildDebugInfo(scopeKey, baseHash, "no_base_hash"),
 				);
-				return cacheBaselineResult(baselineResult, meta, runtimeState, ctx, current.text);
+				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text);
 			}
 
 			if (baseHash === current.currentHash) {
@@ -399,7 +407,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 					baseHash,
 					buildDebugInfo(scopeKey, baseHash, reason, overrides),
 				);
-				return cacheBaselineResult(baselineResult, meta, runtimeState, ctx, current.text);
+				return cacheBaselineResult(await readSnapshotBaseline(), meta, runtimeState, ctx, current.text);
 			};
 
 			if (!baseText) {

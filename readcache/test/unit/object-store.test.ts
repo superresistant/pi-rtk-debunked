@@ -1,4 +1,4 @@
-import { mkdtemp, stat, utimes } from "node:fs/promises";
+import { mkdtemp, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -26,6 +26,15 @@ describe("object-store", () => {
 
 		const persistedAgain = await persistObjectIfAbsent(repoRoot, hash, text);
 		expect(persistedAgain.written).toBe(false);
+	});
+
+	it("rejects stored text that no longer matches its hash, including legacy stripped BOMs", async () => {
+		const repoRoot = await mkdtemp(join(tmpdir(), "pi-readcache-store-mismatch-"));
+		const text = "\uFEFForiginal text";
+		const hash = hashText(text);
+		await persistObjectIfAbsent(repoRoot, hash, text);
+		await writeFile(objectPathForHash(repoRoot, hash), text.slice(1));
+		expect(await loadObject(repoRoot, hash)).toBeUndefined();
 	});
 
 	it("handles parallel writes of identical hashes safely", async () => {

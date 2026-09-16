@@ -175,6 +175,7 @@ function parseReadCacheMetaV1(value: unknown): ReadCacheMetaV1 | undefined {
 		servedHash: value.servedHash,
 		...(typeof value.baseHash === "string" ? { baseHash: value.baseHash } : {}),
 		mode,
+		...(value.diffFormat === 1 ? { diffFormat: 1 as const } : {}),
 		totalLines: value.totalLines,
 		rangeStart: value.rangeStart,
 		rangeEnd: value.rangeEnd,

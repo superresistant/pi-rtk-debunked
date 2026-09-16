@@ -89,6 +89,41 @@ function appendAssistantSeed(sessionManager: SessionManager, text: string): void
 }
 
 describe("integration: restart and resume", () => {
+	it("re-anchors after a legacy diff instead of trusting its target hash or dependent markers", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-legacy-diff-"));
+		const path = join(cwd, "sample.txt");
+		const lines = Array.from({ length: 30 }, (_, index) => `line ${index + 1}: original payload`);
+		await writeFile(path, `${lines.join("\n")}\n`, "utf-8");
+		const sessionManager = SessionManager.inMemory(cwd);
+		const ctx = asContext(cwd, sessionManager);
+		const tool = createReadOverrideTool();
+		const first = await tool.execute("initial", { path }, undefined, undefined, ctx);
+		const anchorId = appendReadResult(sessionManager, "initial", first);
+		lines[29] = "after  ";
+		const current = `${lines.join("\n")}\n`;
+		await writeFile(path, current, "utf-8");
+		const diff = await tool.execute("diff", { path }, undefined, undefined, ctx);
+		expect(diff.details?.readcache).toMatchObject({ mode: "diff", diffFormat: 1 });
+		appendReadResult(sessionManager, "safe-diff", diff);
+		const safeResume = await createReadOverrideTool().execute("safe-resume", { path }, undefined, undefined, ctx);
+		expect(safeResume.details?.readcache?.mode).toBe("unchanged");
+		sessionManager.branch(anchorId);
+		const legacyMeta = { ...diff.details!.readcache! };
+		delete (legacyMeta as { diffFormat?: number }).diffFormat;
+		appendReadResult(sessionManager, "legacy-diff", {
+			...diff,
+			content: diff.content.map((block) => block.type === "text" ? { ...block, text: block.text.trimEnd() } : block),
+			details: { readcache: legacyMeta },
+		});
+		appendReadResult(sessionManager, "dependent-marker", {
+			content: [{ type: "text", text: "[readcache: unchanged]" }],
+			details: { readcache: { ...legacyMeta, mode: "unchanged", baseHash: legacyMeta.servedHash } },
+		});
+		const resumed = await createReadOverrideTool().execute("resumed", { path }, undefined, undefined, ctx);
+		expect(resumed.details?.readcache?.mode).toBe("full");
+		expect(resumed.content).toEqual([{ type: "text", text: current }]);
+	});
+
 	it("rebuilds invalidation semantics from branch replay after restart", async () => {
 		const cwd = await mkdtemp(join(tmpdir(), "pi-readcache-resume-cwd-"));
 		const sessionDir = await mkdtemp(join(tmpdir(), "pi-readcache-resume-session-"));
