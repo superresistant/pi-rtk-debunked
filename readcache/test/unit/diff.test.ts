@@ -1,3 +1,4 @@
+import { applyPatch } from "diff";
 import { describe, expect, it } from "vitest";
 import { computeUnifiedDiff, isDiffUseful } from "../../src/diff.js";
 
@@ -15,6 +16,24 @@ describe("diff", () => {
 		expect(diff?.diffText).toContain("+line 2 updated");
 		expect(diff?.changedLines).toBe(1);
 		expect(diff?.diffText.startsWith("===")).toBe(false);
+	});
+
+	it.each([
+		{ name: "blank trailing context", blankContext: true, replacement: "changed", newline: "\n", finalNewline: true },
+		{ name: "trailing spaces", blankContext: false, replacement: "after  ", newline: "\n", finalNewline: true },
+		{ name: "trailing tab", blankContext: false, replacement: "after\t", newline: "\n", finalNewline: true },
+		{ name: "CRLF", blankContext: false, replacement: "after  ", newline: "\r\n", finalNewline: true },
+		{ name: "missing final newline", blankContext: false, replacement: "after  ", newline: "\n", finalNewline: false },
+	])("preserves $name in useful patch roundtrips", (fixture) => {
+		const lines = Array.from({ length: 30 }, (_, index) => `line ${index + 1}: original content payload`);
+		if (fixture.blankContext) lines.splice(27, 3, "", "", "");
+		const ending = fixture.finalNewline ? fixture.newline : "";
+		const baseText = lines.join(fixture.newline) + ending;
+		lines[fixture.blankContext ? 26 : 29] = fixture.replacement;
+		const currentText = lines.join(fixture.newline) + ending;
+		const diff = computeUnifiedDiff(baseText, currentText, "sample.txt")!;
+		expect(isDiffUseful(diff.diffText, baseText, currentText)).toBe(true);
+		expect(applyPatch(baseText, diff.diffText)).toBe(currentText);
 	});
 
 	it("returns undefined when there are no line-level hunks", () => {

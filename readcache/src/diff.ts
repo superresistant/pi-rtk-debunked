@@ -41,9 +41,9 @@ function sanitizePathForPatch(pathDisplay: string): string {
 function stripPatchSeparator(patch: string): string {
 	const lines = patch.split("\n");
 	if (lines[0] === PATCH_SEPARATOR_LINE) {
-		return lines.slice(1).join("\n").trimEnd();
+		return lines.slice(1).join("\n");
 	}
-	return patch.trimEnd();
+	return patch;
 }
 
 function lineCount(text: string): number {
