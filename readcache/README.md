@@ -123,8 +123,12 @@ flowchart TD
   - custom invalidation entries (`customType: "pi-readcache"`)
 - Trust requires a successful, committed result whose content matches its emitted `outputHash`
 - Changed/dropped output or missing digests invalidate that path's trust; older sessions need fresh baselines
+- Read results without usable cache metadata reset all retained trust: their superseded path cannot be identified safely
 - Uncommitted results grant no trust, so duplicate reads in the same pending batch may return full content
 - Newly displayed content supersedes older overlapping anchors with different hashes; disjoint ranges remain cached
+- Reads execute sequentially with sibling tools so cache decisions observe preceding committed results
+
+Trust assumes retained read text survives later `context` and `before_provider_request` transformations. Extensions that prune that text must disable readcache or coordinate invalidation; Pi exposes no final post-transformation visibility attestation. The inspected default Pi/Anchor stack does not prune read text this way.
 
 ## Compaction/tree semantics
 

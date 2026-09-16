@@ -145,6 +145,10 @@ function replaySnapshotFromBranch(branchEntries: SessionEntry[], startIndex: num
 		const invalidation = extractInvalidationFromSessionEntry(entry);
 		if (invalidation) {
 			applyInvalidation(knowledge, invalidation, blockedRangesByPath);
+		} else if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolName === "read") {
+			// Without usable metadata, the superseded path is unknown.
+			knowledge.clear();
+			blockedRangesByPath.clear();
 		}
 	}
 

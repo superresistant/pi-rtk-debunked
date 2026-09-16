@@ -438,9 +438,10 @@ describe("replay", () => {
 			},
 		];
 
-		const knowledge = replayKnowledgeFromBranch(entries, 0);
+		const knowledge = replayKnowledgeFromBranch(entries.slice(0, -1), 0);
 		expect(knowledge.get(path)?.get(SCOPE_FULL)).toEqual({ hash: "a".repeat(64), seq: 2 });
 		expect(knowledge.get(path)?.get(scope)).toBeUndefined();
+		expect(replayKnowledgeFromBranch(entries, 0).size).toBe(0);
 	});
 
 	it("retains only the active replay snapshot during linear session growth", () => {
@@ -449,7 +450,7 @@ describe("replay", () => {
 			sessionId: "growing-session", leafId: null, branch: [],
 		};
 		const sessionManager = createSessionManagerStub(state);
-		for (let index = 1; index <= 100; index += 1) {
+		for (let index = 1; index <= 1000; index += 1) {
 			const id = `entry-${index}`;
 			state.branch.push(createReadEntry(id, state.leafId, createMeta({
 				pathKey: `/tmp/file-${index}.txt`, scopeKey: SCOPE_FULL, servedHash: "a".repeat(64), mode: "full",
@@ -458,8 +459,8 @@ describe("replay", () => {
 			expect(buildKnowledgeForLeaf(sessionManager, runtime).size).toBe(index);
 		}
 		expect(runtime.memoByLeaf.size).toBe(1);
-		expect([...runtime.memoByLeaf.values()].reduce((total, memo) => total + memo.knowledge.size, 0)).toBe(100);
-	});
+		expect([...runtime.memoByLeaf.values()].reduce((total, memo) => total + memo.knowledge.size, 0)).toBe(1000);
+	}, 20000);
 
 	it("returns isolated knowledge from only the committed active branch", () => {
 		const path = "/tmp/file.txt";

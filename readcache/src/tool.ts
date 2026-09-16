@@ -267,6 +267,7 @@ export function createReadOverrideTool(runtimeState: ReplayRuntimeState = create
 	return {
 		name: "read",
 		label: "read",
+		executionMode: "sequential" as const,
 		description: buildReadDescription(),
 		parameters: readToolSchema,
 		execute: async (
