@@ -1,3 +1,5 @@
+Owner: merged into /home/sr/dev/pi/pi-local Sept25; that agent owns this repo
+
 pi-rtk-debunked
 
 One Pi package, two independent extensions:
