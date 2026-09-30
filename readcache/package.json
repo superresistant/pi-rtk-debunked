@@ -39,13 +39,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@sinclair/typebox": "^0.34.40",
     "diff": "^8.0.2"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
   },
   "devDependencies": {
+    "@sinclair/typebox": "^0.34.40",
     "@types/node": "^24.5.2",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
